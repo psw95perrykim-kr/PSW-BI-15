@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Instant DJ — 기술 검증</title>
+<style>
+  :root {
+    --bg: #0d0d10;
+    --panel: #17171c;
+    --line: #2a2a33;
+    --fg: #ececf0;
+    --dim: #8a8a99;
+    --a: #4da3ff;
+    --b: #ff7a4d;
+    --ok: #37d67a;
+    --no: #ff5470;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 16px 14px calc(24px + env(safe-area-inset-bottom));
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  }
+  h1 { font-size: 18px; margin: 0 0 2px; letter-spacing: -.02em; }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 18px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px; margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 13px; margin: 0 0 10px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+  }
+  .players { display: flex; gap: 10px; }
+  .players > div { flex: 1; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; }
+  iframe { width: 100%; height: 100%; border: 0; display: block; }
+  input[type=text] {
+    width: 100%; padding: 10px; margin-bottom: 8px; font-size: 15px;
+    background: #101014; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  button {
+    font: inherit; font-weight: 600; color: var(--fg);
+    background: #24242c; border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; cursor: pointer;
+  }
+  button:active { background: #33333d; }
+  .big { width: 100%; padding: 18px; font-size: 17px; background: #2f5fa8; border-color: #3d76c9; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > button { flex: 1; min-width: 68px; }
+  label.sl { display: block; font-size: 13px; color: var(--dim); margin: 12px 0 4px; }
+  input[type=range] { width: 100%; height: 38px; accent-color: var(--a); }
+  #xf { accent-color: #b07de0; }
+  .badge { font-size: 12px; padding: 2px 7px; border-radius: 999px; background: #24242c; color: var(--dim); }
+  .test { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .test:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .test p { margin: 0 0 8px; font-size: 14px; }
+  .test .q { color: var(--dim); font-size: 13px; }
+  .verdict { display: flex; gap: 8px; margin-top: 8px; }
+  .verdict button { flex: 1; padding: 9px; font-size: 14px; }
+  .verdict button[data-v="y"].on { background: var(--ok); border-color: var(--ok); color: #04210f; }
+  .verdict button[data-v="n"].on { background: var(--no); border-color: var(--no); color: #2a0009; }
+  #log {
+    font: 12px/1.45 ui-monospace, Menlo, monospace; color: #9fb8d0;
+    background: #08080b; border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; height: 190px; overflow-y: auto; white-space: pre-wrap;
+  }
+  #log b { color: var(--no); }
+  #log i { color: var(--ok); font-style: normal; }
+  #scratch {
+    height: 100px; border-radius: 10px; margin-top: 8px;
+    background: repeating-linear-gradient(90deg, #1c1c22 0 18px, #212129 18px 36px);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--dim); font-size: 13px; touch-action: none; user-select: none;
+  }
+</style>
+</head>
+<body>
+
+<h1>Instant DJ — 기술 검증</h1>
+<p class="sub">아이폰 사파리에서 열어서 위에서부터 순서대로 실행. 반드시 <b>실제 드라이브 환경(블루투스 연결)</b>에서도 한 번 더 확인.</p>
+
+<div class="card">
+  <h2>1. 곡 로드</h2>
+  <input type="text" id="urlA" placeholder="A 덱: 유튜브 URL 또는 ID" value="dQw4w9WgXcQ">
+  <input type="text" id="urlB" placeholder="B 덱: 유튜브 URL 또는 ID" value="9bZkp7q19f0">
+  <div class="row"><button onclick="loadBoth()">덱에 로드</button></div>
+  <div class="players" style="margin-top:10px">
+    <div id="pA"></div>
+    <div id="pB"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2. 핵심 테스트</h2>
+
+  <div class="test">
+    <p><b>T1 · 동시 재생</b> <span class="badge" id="s1">미실행</span></p>
+    <p class="q">아이폰이 오디오 스트림 2개를 동시에 허용하는지. 이게 안 되면 크로스페이드 자체가 불가능.</p>
+    <button class="big" onclick="playBoth()">▶︎ A · B 동시 재생</button>
+    <p class="q" style="margin-top:8px">두 곡이 겹쳐서 같이 들리나?</p>
+    <div class="verdict" data-t="T1"><button data-v="y">O 둘 다 들림</button><button data-v="n">X 하나만</button></div>
+  </div>
+
+  <div class="test">
+    <p><b>T2 · 볼륨 제어</b> <span class="badge" id="s2">미실행</span></p>
+    <p class="q">iOS Safari는 보통 프로그램 볼륨 제어를 무시함. <u>이 테스트가 프로젝트의 분기점.</u></p>
+    <label class="sl">A 덱 볼륨 — <span id="vAv">100</span></label>
+    <input type="range" id="vA" min="0" max="100" value="100">
+    <div class="row"><button onclick="ramp()">3초간 A 볼륨 100 → 0 자동</button></div>
+    <p class="q" style="margin-top:8px">A 소리가 실제로 작아지나? (화면 숫자 말고 <b>귀로</b> 판단)</p>
+    <div class="verdict" data-t="T2"><button data-v="y">O 소리 변함</button><button data-v="n">X 그대로</button></div>
+  </div>
+
+  <div class="test">
+    <p><b>T3 · 크로스페이드</b> <span class="badge" id="s3">미실행</span></p>
+    <label class="sl">A ←──→ B</label>
+    <input type="range" id="xf" min="0" max="100" value="0">
+    <div class="row"><button onclick="autoXf()">4초 자동 크로스페이드</button></div>
+    <p class="q" style="margin-top:8px">A에서 B로 자연스럽게 넘어가나?</p>
+    <div class="verdict" data-t="T3"><button data-v="y">O 자연스러움</button><button data-v="n">X 안 됨</button></div>
+  </div>
+
+  <div class="test">
+    <p><b>T4 · 재생 속도</b> <span class="badge" id="s4">미실행</span></p>
+    <p class="q">템포 맞추기 / 스크래치 흉내에 쓸 수 있는지.</p>
+    <div class="row">
+      <button onclick="rate(.5)">0.5x</button><button onclick="rate(.75)">0.75x</button>
+      <button onclick="rate(1)">1x</button><button onclick="rate(1.5)">1.5x</button>
+    </div>
+    <p class="q" style="margin-top:8px">속도가 실제로 바뀌나? 피치도 같이 변하나?</p>
+    <div class="verdict" data-t="T4"><button data-v="y">O 바뀜</button><button data-v="n">X 무시됨</button></div>
+  </div>
+
+  <div class="test">
+    <p><b>T5 · 시크 반응속도</b> <span class="badge" id="s5">미실행</span></p>
+    <p class="q">아래 판을 좌우로 문질러 봐. 스크래치는 결국 빠른 seek이라 <b>지연시간(ms)</b>이 전부. 200ms 넘으면 스크래치는 포기해야 함.</p>
+    <div id="scratch">← 여기를 문지르기 →</div>
+    <div class="row" style="margin-top:8px"><button onclick="seekTest()">-3초 점프 (지연 측정)</button></div>
+    <p class="q" style="margin-top:8px">로그의 seek 지연시간 확인.</p>
+    <div class="verdict" data-t="T5"><button data-v="y">O 즉각적</button><button data-v="n">X 버벅임</button></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. 로그</h2>
+  <div id="log"></div>
+  <div class="row" style="margin-top:10px">
+    <button onclick="copyResult()">결과 요약 복사</button>
+    <button onclick="document.getElementById('log').innerHTML=''">로그 지우기</button>
+  </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+const L = document.getElementById('log');
+function log(m, kind) {
+  const t = new Date().toTimeString().slice(3, 12);
+  const tag = kind === 'err' ? 'b' : kind === 'ok' ? 'i' : 'span';
+  L.innerHTML += `<${tag}>${t}  ${m}</${tag}>\n`;
+  L.scrollTop = L.scrollHeight;
+}
+
+// ---- 결과 기록 ----
+const results = {};
+document.querySelectorAll('.verdict').forEach(v => {
+  v.querySelectorAll('button').forEach(b => b.onclick = () => {
+    v.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    results[v.dataset.t] = b.dataset.v === 'y' ? 'PASS' : 'FAIL';
+    log(`${v.dataset.t} → ${results[v.dataset.t]}`, b.dataset.v === 'y' ? 'ok' : 'err');
+  });
+});
+function copyResult() {
+  const ua = navigator.userAgent;
+  const txt = ['T1 동시재생','T2 볼륨제어','T3 크로스페이드','T4 재생속도','T5 시크']
+    .map((n, i) => `${n}: ${results['T'+(i+1)] || '미실행'}`).join('\n')
+    + `\n---\n${ua}\n${L.textContent.split('\n').slice(-25).join('\n')}`;
+  navigator.clipboard.writeText(txt).then(
+    () => log('결과 복사 완료 — 세리한테 붙여넣기', 'ok'),
+    () => log('복사 실패. 로그를 직접 스크린샷', 'err'));
+}
+
+// ---- 플레이어 ----
+let A, B, ready = false;
+const ERR = {2:'잘못된 ID', 5:'HTML5 재생 오류', 100:'영상 없음/비공개', 101:'임베드 금지', 150:'임베드 금지'};
+
+function parseId(s) {
+  s = s.trim();
+  const m = s.match(/(?:v=|\/live\/|youtu\.be\/|\/embed\/|\/shorts\/)([\w-]{11})/);
+  return m ? m[1] : (/^[\w-]{11}$/.test(s) ? s : null);
+}
+
+function onYouTubeIframeAPIReady() {
+  ready = true;
+  log('YouTube API 로드 완료', 'ok');
+  loadBoth();
+}
+
+function mk(el, id, name) {
+  return new YT.Player(el, {
+    videoId: id,
+    playerVars: { playsinline: 1, controls: 1, rel: 0, enablejsapi: 1 },
+    events: {
+      onReady: e => log(`${name} 준비됨 (초기볼륨 ${e.target.getVolume()})`, 'ok'),
+      onError: e => log(`${name} 에러 ${e.data}: ${ERR[e.data] || '알 수 없음'}`, 'err'),
+      onStateChange: e => {
+        const S = {'-1':'미시작', 0:'종료', 1:'재생', 2:'일시정지', 3:'버퍼링', 5:'큐됨'};
+        log(`${name} 상태: ${S[e.data] ?? e.data}`);
+      }
+    }
+  });
+}
+
+function loadBoth() {
+  if (!ready) return log('API 아직 로딩 중…');
+  const a = parseId(document.getElementById('urlA').value);
+  const b = parseId(document.getElementById('urlB').value);
+  if (!a || !b) return log('URL/ID 파싱 실패 — 11자리 영상 ID 확인', 'err');
+  document.getElementById('pA').innerHTML = '<div id="ifA"></div>';
+  document.getElementById('pB').innerHTML = '<div id="ifB"></div>';
+  A = mk('ifA', a, 'A');
+  B = mk('ifB', b, 'B');
+  log(`로드: A=${a}  B=${b}`);
+}
+
+// ---- T1 ----
+function playBoth() {
+  if (!A || !B) return log('먼저 덱에 로드', 'err');
+  // iOS: 반드시 같은 유저 제스처 안에서 둘 다 시작해야 함
+  A.playVideo(); B.playVideo();
+  document.getElementById('s1').textContent = '실행됨';
+  log('A·B playVideo() 동시 호출');
+  setTimeout(() => {
+    try { log(`상태 확인 → A:${A.getPlayerState()} B:${B.getPlayerState()} (1=재생)`); } catch(e){}
+  }, 1500);
+}
+
+// ---- T2 ----
+const vA = document.getElementById('vA');
+vA.oninput = () => {
+  document.getElementById('vAv').textContent = vA.value;
+  if (A) A.setVolume(+vA.value);
+  document.getElementById('s2').textContent = '실행됨';
+};
+function ramp() {
+  if (!A) return log('먼저 덱에 로드', 'err');
+  document.getElementById('s2').textContent = '실행됨';
+  log('볼륨 램프 100→0 시작 (3초)');
+  const t0 = performance.now();
+  const iv = setInterval(() => {
+    const p = Math.min(1, (performance.now() - t0) / 3000);
+    const v = Math.round(100 * (1 - p));
+    A.setVolume(v);
+    vA.value = v; document.getElementById('vAv').textContent = v;
+    if (p >= 1) {
+      clearInterval(iv);
+      // 리포트값과 실제 체감이 다를 수 있음을 명시
+      log(`램프 종료. getVolume() 리포트 = ${A.getVolume()} (※ 리포트값은 항상 맞게 나옴. 귀로 판단할 것)`);
+    }
+  }, 50);
+}
+
+// ---- T3 ----
+const xf = document.getElementById('xf');
+function applyXf(p) {           // p: 0(A) → 100(B), 등파워 커브
+  const t = p / 100;
+  if (A) A.setVolume(Math.round(Math.cos(t * Math.PI / 2) * 100));
+  if (B) B.setVolume(Math.round(Math.sin(t * Math.PI / 2) * 100));
+}
+xf.oninput = () => { applyXf(+xf.value); document.getElementById('s3').textContent = '실행됨'; };
+function autoXf() {
+  if (!A || !B) return log('먼저 덱에 로드', 'err');
+  document.getElementById('s3').textContent = '실행됨';
+  log('자동 크로스페이드 A→B (4초)');
+  const t0 = performance.now();
+  const iv = setInterval(() => {
+    const p = Math.min(1, (performance.now() - t0) / 4000);
+    xf.value = p * 100; applyXf(p * 100);
+    if (p >= 1) { clearInterval(iv); log('크로스페이드 종료'); }
+  }, 40);
+}
+
+// ---- T4 ----
+function rate(r) {
+  if (!A) return log('먼저 덱에 로드', 'err');
+  document.getElementById('s4').textContent = '실행됨';
+  A.setPlaybackRate(r);
+  setTimeout(() => log(`재생속도 요청 ${r}x → 실제 ${A.getPlaybackRate()}x (가능: ${A.getAvailablePlaybackRates()})`), 300);
+}
+
+// ---- T5 ----
+function seekTest() {
+  if (!A) return log('먼저 덱에 로드', 'err');
+  document.getElementById('s5').textContent = '실행됨';
+  const from = A.getCurrentTime(), t0 = performance.now();
+  A.seekTo(Math.max(0, from - 3), true);
+  const iv = setInterval(() => {
+    const now = A.getCurrentTime();
+    if (Math.abs(now - from) > 1.5) {
+      clearInterval(iv);
+      log(`seek 반영까지 ${Math.round(performance.now() - t0)}ms  (${from.toFixed(1)}s → ${now.toFixed(1)}s)`);
+    }
+  }, 10);
+  setTimeout(() => clearInterval(iv), 3000);
+}
+
+const pad = document.getElementById('scratch');
+let sx = 0, st = 0, base = 0;
+pad.addEventListener('touchstart', e => {
+  if (!A) return;
+  sx = e.touches[0].clientX; base = A.getCurrentTime(); st = performance.now();
+  document.getElementById('s5').textContent = '실행됨';
+  e.preventDefault();
+}, {passive: false});
+pad.addEventListener('touchmove', e => {
+  if (!A) return;
+  const dx = e.touches[0].clientX - sx;
+  A.seekTo(Math.max(0, base + dx / 40), true);   // 40px = 1초
+  e.preventDefault();
+}, {passive: false});
+pad.addEventListener('touchend', () => {
+  if (!A) return;
+  log(`스크래치 제스처 ${Math.round(performance.now() - st)}ms — 소리가 따라왔는지 체감 판단`);
+});
+</script>
+</body>
+</html>

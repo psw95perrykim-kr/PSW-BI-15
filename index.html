@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0a0a0c">
+<title>INSTANT DJ</title>
+<style>
+:root{
+  --bg:#0a0a0c;
+  --metal-1:#242a31; --metal-2:#16191e; --metal-3:#0e1114;
+  --line:#000; --edge:#3a424c;
+  --fg:#e8ecf2; --dim:#6d7784;
+  --a:#39c6ff; --b:#ff8a3d; --live:#37d67a; --warn:#ff5470;
+  --lcd:#0b1410; --lcd-fg:#7dffb0;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{overscroll-behavior:none}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+  padding:calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom));
+  background-image:radial-gradient(ellipse at 50% -10%,#1a1f26 0%,var(--bg) 60%);
+  min-height:100vh;
+}
+
+/* ── 상단 바 ── */
+.topbar{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+.brand{font:700 13px/1 ui-monospace,Menlo,monospace;letter-spacing:.22em;color:var(--dim)}
+.brand b{color:var(--fg)}
+.topbar .sp{flex:1}
+.pill{
+  font:600 10px/1 ui-monospace,monospace;letter-spacing:.1em;padding:5px 8px;border-radius:5px;
+  background:#15181d;border:1px solid #262c34;color:var(--dim);
+}
+.pill.on{color:var(--live);border-color:#1e4b34;background:#0d1a14}
+
+/* ── 장비 패널 공통 ── */
+.panel{
+  background:linear-gradient(#20262d,#12151a 55%,#0d1014);
+  border:1px solid var(--edge);border-top-color:#4c565f;
+  border-radius:10px;
+  box-shadow:0 1px 0 #566069 inset,0 -1px 0 #000 inset,0 6px 14px rgba(0,0,0,.55);
+}
+
+/* ── 덱 ── */
+.decks{display:flex;gap:8px}
+.deck{flex:1;min-width:0;padding:9px}
+.deck-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.tag{
+  font:700 10px/1 ui-monospace,monospace;letter-spacing:.12em;
+  padding:4px 6px;border-radius:4px;background:#0d1014;border:1px solid #2b323a;
+}
+#deckA .tag{color:var(--a);border-color:#1d4c63;box-shadow:0 0 8px -2px var(--a)}
+#deckB .tag{color:var(--b);border-color:#63401d;box-shadow:0 0 8px -2px var(--b)}
+.deck-head .sp{flex:1}
+.lcd{
+  font:700 11px/1 ui-monospace,Menlo,monospace;color:var(--lcd-fg);
+  background:var(--lcd);border:1px solid #14251c;border-radius:4px;
+  padding:5px 6px;text-shadow:0 0 6px rgba(125,255,176,.5);
+}
+
+/* 플래터 */
+.platter{position:relative;width:100%;aspect-ratio:1;margin:0 auto}
+.platter .ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.vinyl{
+  position:absolute;inset:7%;border-radius:50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%,#0c0e11 0 2px,#141820 2px 4px),
+    radial-gradient(circle at 35% 30%,#2b323b,#08090b 70%);
+  box-shadow:0 2px 10px rgba(0,0,0,.8),0 0 0 1px #000;
+}
+.spin{position:absolute;inset:7%;border-radius:50%;animation:rot 1.8s linear infinite;animation-play-state:paused}
+.spin::after{
+  content:"";position:absolute;left:50%;top:5%;width:5px;height:13%;margin-left:-2.5px;
+  border-radius:3px;background:var(--fg);opacity:.85;
+}
+.playing .spin{animation-play-state:running}
+@keyframes rot{to{transform:rotate(360deg)}}
+.vid{
+  position:absolute;inset:26%;border-radius:50%;overflow:hidden;background:#000;
+  box-shadow:0 0 0 2px #000,0 0 0 3px #333c46,0 0 18px rgba(0,0,0,.9) inset;
+  pointer-events:none;
+}
+.vid>div,.vid iframe{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:178%;height:100%;border:0;
+}
+.grab{position:absolute;inset:0;border-radius:50%;touch-action:none;z-index:3;cursor:pointer}
+.grab:active{background:rgba(255,255,255,.05)}
+.spindle{
+  position:absolute;left:50%;top:50%;width:7%;height:7%;margin:-3.5% 0 0 -3.5%;
+  border-radius:50%;background:linear-gradient(#c9d2dc,#6d7784);z-index:2;pointer-events:none;
+  box-shadow:0 0 0 1px #000;
+}
+.title{
+  margin-top:8px;height:30px;overflow:hidden;font-size:11px;line-height:1.35;color:var(--dim);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+.title.set{color:var(--fg)}
+
+/* 덱 버튼 */
+.deck-btns{display:flex;gap:6px;margin-top:8px}
+.btn{
+  flex:1;font:700 12px/1 ui-monospace,monospace;letter-spacing:.06em;color:var(--fg);
+  background:linear-gradient(#38414c,#1c2128);border:1px solid #454f5b;border-top-color:#5d6874;
+  border-radius:7px;padding:12px 4px;
+  box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 2px 4px rgba(0,0,0,.5);
+}
+.btn:active{background:linear-gradient(#1c2128,#38414c);box-shadow:0 2px 6px rgba(0,0,0,.6) inset}
+.btn.play.on{background:linear-gradient(#2f9e63,#186b44);border-color:#3ec27c;color:#eafff2}
+.btn.sm{padding:9px 4px;font-size:11px}
+.btn.load{background:linear-gradient(#2b3947,#141a21)}
+#deckA .btn.load{border-color:#1d4c63;color:var(--a)}
+#deckB .btn.load{border-color:#63401d;color:var(--b)}
+
+/* ── 믹서 ── */
+.mixer{margin-top:8px;padding:11px 12px 13px}
+.trims{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.trim{flex:1;display:flex;align-items:center;gap:7px}
+.trim span{font:700 9px/1 ui-monospace,monospace;color:var(--dim);letter-spacing:.1em}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;width:100%;margin:0}
+input[type=range]::-webkit-slider-runnable-track{
+  height:6px;border-radius:3px;background:linear-gradient(#05070a,#0d1116);
+  box-shadow:0 1px 0 #39424c,0 2px 5px rgba(0,0,0,.8) inset;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;margin-top:-7px;border-radius:5px;
+  background:linear-gradient(#dbe3ec,#8d97a3);border:1px solid #000;
+  box-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+.trim.a input::-webkit-slider-thumb{background:linear-gradient(#9fe4ff,#2f8fb8)}
+.trim.b input::-webkit-slider-thumb{background:linear-gradient(#ffc79f,#b8702f)}
+
+.xf-label{display:flex;justify-content:space-between;font:700 10px/1 ui-monospace,monospace;letter-spacing:.14em;margin-bottom:7px}
+.xf-label .l{color:var(--a)} .xf-label .r{color:var(--b)}
+.xf-label .c{color:var(--dim)}
+#xf{height:34px}
+#xf::-webkit-slider-runnable-track{
+  height:14px;border-radius:7px;
+  background:linear-gradient(90deg,#0d2b38,#05070a 45%,#05070a 55%,#3a2410);
+  box-shadow:0 1px 0 #39424c,0 3px 7px rgba(0,0,0,.85) inset;
+}
+#xf::-webkit-slider-thumb{
+  width:34px;height:34px;margin-top:-10px;border-radius:7px;
+  background:linear-gradient(#e9eff6,#9aa5b2 48%,#6f7a86);
+  border:1px solid #000;box-shadow:0 2px 6px rgba(0,0,0,.75),0 1px 0 rgba(255,255,255,.6) inset;
+}
+
+/* 트랜지션 */
+.auto{display:flex;gap:6px;margin-top:13px}
+.auto .btn{padding:13px 4px}
+.btn.go{
+  flex:2;background:linear-gradient(#c9862c,#7d4d13);border-color:#e0a24a;color:#fff6e6;
+  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 0 16px -4px #e0a24a;
+}
+.btn.go:active{background:linear-gradient(#7d4d13,#c9862c)}
+.btn.go.busy{background:linear-gradient(#37d67a,#1a7a45);border-color:#4ee595;color:#eafff2}
+.seg{display:flex;flex:1.4;border-radius:7px;overflow:hidden;border:1px solid #454f5b}
+.seg button{
+  flex:1;font:700 11px/1 ui-monospace,monospace;color:var(--dim);
+  background:#161a20;border:0;border-right:1px solid #2b323a;padding:13px 0;
+}
+.seg button:last-child{border-right:0}
+.seg button.on{background:linear-gradient(#38414c,#252c34);color:var(--fg)}
+
+/* ── 크레이트 ── */
+.crate{margin-top:8px;padding:11px 12px 12px}
+.crate h2{font:700 10px/1 ui-monospace,monospace;letter-spacing:.14em;color:var(--dim);margin:0 0 9px}
+.addrow{display:flex;gap:6px}
+input[type=text]{
+  flex:1;min-width:0;font:13px/1 -apple-system,sans-serif;color:var(--fg);-webkit-user-select:text;user-select:text;
+  background:#07090c;border:1px solid #2b323a;border-radius:7px;padding:11px 10px;
+  box-shadow:0 2px 5px rgba(0,0,0,.7) inset;
+}
+input[type=text]::placeholder{color:#4e5762}
+.addrow .btn{flex:0 0 62px}
+ul{list-style:none;margin:10px 0 0;padding:0;max-height:190px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+li{
+  display:flex;align-items:center;gap:7px;padding:8px;border-radius:7px;
+  background:#12161b;border:1px solid #232932;margin-bottom:5px;
+}
+li .n{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+li .mini{
+  font:700 10px/1 ui-monospace,monospace;padding:8px 9px;border-radius:5px;
+  background:#232932;border:1px solid #333b45;color:var(--fg);
+}
+li .mini.a{color:var(--a);border-color:#1d4c63}
+li .mini.b{color:var(--b);border-color:#63401d}
+li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
+.empty{color:#4e5762;font-size:12px;text-align:center;padding:14px 0}
+
+.toast{
+  position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#232932;border:1px solid #3a434e;color:var(--fg);
+  padding:10px 16px;border-radius:8px;font-size:13px;z-index:99;
+  box-shadow:0 6px 20px rgba(0,0,0,.7);opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><b>INSTANT</b> DJ</div>
+  <div class="sp"></div>
+  <div class="pill" id="pillLive">READY</div>
+</div>
+
+<div class="decks">
+  <div class="deck panel" id="deckA">
+    <div class="deck-head">
+      <div class="tag">DECK A</div><div class="sp"></div><div class="lcd" id="lcdA">0:00</div>
+    </div>
+    <div class="platter" id="platA">
+      <svg class="ring" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="47" fill="none" stroke="#1a1e24" stroke-width="4"/>
+        <circle cx="50" cy="50" r="47" fill="none" stroke="var(--a)" stroke-width="4"
+                stroke-linecap="round" id="arcA" stroke-dasharray="0 999"/>
+      </svg>
+      <div class="vinyl"></div>
+      <div class="spin"></div>
+      <div class="vid"><div id="ytA"></div></div>
+      <div class="spindle"></div>
+      <div class="grab" data-deck="A"></div>
+    </div>
+    <div class="title" id="titleA">— 트랙 없음 —</div>
+    <div class="deck-btns">
+      <button class="btn sm" onclick="cue('A')">CUE</button>
+      <button class="btn sm play" id="playA" onclick="toggle('A')">▶</button>
+    </div>
+  </div>
+
+  <div class="deck panel" id="deckB">
+    <div class="deck-head">
+      <div class="tag">DECK B</div><div class="sp"></div><div class="lcd" id="lcdB">0:00</div>
+    </div>
+    <div class="platter" id="platB">
+      <svg class="ring" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="47" fill="none" stroke="#1a1e24" stroke-width="4"/>
+        <circle cx="50" cy="50" r="47" fill="none" stroke="var(--b)" stroke-width="4"
+                stroke-linecap="round" id="arcB" stroke-dasharray="0 999"/>
+      </svg>
+      <div class="vinyl"></div>
+      <div class="spin"></div>
+      <div class="vid"><div id="ytB"></div></div>
+      <div class="spindle"></div>
+      <div class="grab" data-deck="B"></div>
+    </div>
+    <div class="title" id="titleB">— 트랙 없음 —</div>
+    <div class="deck-btns">
+      <button class="btn sm" onclick="cue('B')">CUE</button>
+      <button class="btn sm play" id="playB" onclick="toggle('B')">▶</button>
+    </div>
+  </div>
+</div>
+
+<div class="mixer panel">
+  <div class="trims">
+    <div class="trim a"><span>A</span><input type="range" id="tA" min="0" max="100" value="100"></div>
+    <div class="trim b"><span>B</span><input type="range" id="tB" min="0" max="100" value="100"></div>
+  </div>
+  <div class="xf-label"><span class="l">A</span><span class="c">CROSSFADER</span><span class="r">B</span></div>
+  <input type="range" id="xf" min="0" max="100" value="0">
+  <div class="auto">
+    <button class="btn go" id="go" onclick="transition()">⇄ 넘기기</button>
+    <div class="seg" id="seg">
+      <button data-s="2">2초</button>
+      <button data-s="4" class="on">4초</button>
+      <button data-s="8">8초</button>
+    </div>
+  </div>
+</div>
+
+<div class="crate panel">
+  <h2>크레이트</h2>
+  <div class="addrow">
+    <input type="text" id="url" placeholder="유튜브 링크 붙여넣기" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="btn load" onclick="addTrack()">추가</button>
+  </div>
+  <ul id="list"></ul>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+'use strict';
+
+/* ─────────── 상태 ─────────── */
+const P = {A:null, B:null};                 // YT 플레이어
+const meta = {A:{id:null,dur:0}, B:{id:null,dur:0}};
+const trim = {A:1, B:1};                    // 채널 트림 0~1
+let xfPos = 0;                              // 0=A 전용, 100=B 전용
+let started = {A:false, B:false};           // iOS 제스처 해금 여부
+let ytReady = false, busy = false;
+let crate = [];
+
+const $ = s => document.querySelector(s);
+const fmt = s => (s = Math.max(0, s|0), (s/60|0) + ':' + String(s%60).padStart(2,'0'));
+
+let toastT;
+function toast(m){
+  const t = $('#toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1900);
+}
+
+/* ─────────── 오디오 게인 ─────────── */
+/* 등파워 크로스페이드. iOS에서 setVolume이 무시되면 여기서 하드컷으로 폴백한다.
+   (spike.html T2 결과에 따라 FADE_OK를 false로 바꾸면 즉시 컷 모드) */
+const FADE_OK = true;
+
+function gains(){
+  const t = xfPos / 100;
+  return {
+    A: Math.cos(t * Math.PI / 2) * trim.A,
+    B: Math.sin(t * Math.PI / 2) * trim.B
+  };
+}
+function applyGain(){
+  const g = gains();
+  for (const d of ['A','B']){
+    if (!P[d]) continue;
+    const v = Math.round(g[d] * 100);
+    try{
+      P[d].setVolume(v);
+      if (!FADE_OK) v < 50 ? P[d].mute() : P[d].unMute();  // 폴백: 음소거 컷
+    }catch(e){}
+  }
+  const live = g.A > g.B ? 'A' : 'B';
+  const pill = $('#pillLive');
+  const playing = P[live] && safeState(live) === 1;
+  pill.textContent = playing ? `ON AIR · ${live}` : 'READY';
+  pill.classList.toggle('on', !!playing);
+}
+function safeState(d){ try{ return P[d].getPlayerState(); }catch(e){ return -1; } }
+
+/* ─────────── 플레이어 ─────────── */
+function ytid(s){
+  s = (s||'').trim();
+  const m = s.match(/(?:v=|\/live\/|youtu\.be\/|\/embed\/|\/shorts\/)([\w-]{11})/);
+  return m ? m[1] : (/^[\w-]{11}$/.test(s) ? s : null);
+}
+
+function onYouTubeIframeAPIReady(){
+  ytReady = true;
+  P.A = mk('ytA','A'); P.B = mk('ytB','B');
+}
+function mk(el, d){
+  return new YT.Player(el, {
+    height:'100%', width:'100%',
+    playerVars:{playsinline:1, controls:0, rel:0, disablekb:1, modestbranding:1, fs:0, iv_load_policy:3},
+    events:{
+      onReady: () => applyGain(),
+      onError: e => toast(`덱 ${d} 오류 (${e.data === 101 || e.data === 150 ? '임베드 금지 영상' : e.data})`),
+      onStateChange: e => {
+        $('#deck'+d).classList.toggle('playing', e.data === 1);
+        $('#play'+d).classList.toggle('on', e.data === 1);
+        $('#play'+d).textContent = e.data === 1 ? '❚❚' : '▶';
+        if (e.data === 1){
+          try{ meta[d].dur = P[d].getDuration(); }catch(e){}
+          const t = P[d].getVideoData && P[d].getVideoData().title;
+          if (t){ $('#title'+d).textContent = t; $('#title'+d).classList.add('set'); }
+        }
+        applyGain();
+      }
+    }
+  });
+}
+
+function loadDeck(d, id, name){
+  if (!ytReady || !P[d]) return toast('플레이어 준비 중…');
+  meta[d].id = id; meta[d].dur = 0;
+  P[d].cueVideoById(id);
+  $('#title'+d).textContent = name || '로딩 중…';
+  $('#title'+d).classList.add('set');
+  $('#lcd'+d).textContent = '0:00';
+  toast(`덱 ${d} 로드`);
+
+  /* 큐가 실제로 먹었는지 확인. 임베드가 거부되면 onError가 안 뜨고 조용히 죽어서
+     "눌러도 반응 없음"으로만 보인다 — 여기서 원인을 직접 띄운다. */
+  setTimeout(() => {
+    if (meta[d].id !== id) return;                    // 그새 다른 곡 올림
+    let v; try{ v = P[d].getVideoData(); }catch(e){ return; }
+    if (!v || v.video_id !== id || v.isPlayable) {
+      if (v && v.title){                              // 제목 확보 — 크레이트까지 갱신
+        $('#title'+d).textContent = v.title;
+        const c = crate.find(t => t.id === id);
+        if (c && c.name !== v.title){ c.name = v.title; saveCrate(); render(); }
+      }
+      return;
+    }
+    toast(v.errorCode === 'auth' ? '임베드 거부 — HTTPS 주소로 열어야 해' : `재생 불가 (${v.errorCode || '알 수 없음'})`);
+  }, 2500);
+}
+
+/* ─────────── 트랜스포트 ─────────── */
+function toggle(d){
+  if (!meta[d].id) return toast(`덱 ${d}가 비어있어`);
+  started[d] = true;                        // 유저 제스처 안 — iOS 해금
+  safeState(d) === 1 ? P[d].pauseVideo() : P[d].playVideo();
+}
+function cue(d){
+  if (!meta[d].id) return;
+  P[d].seekTo(0, true);
+  P[d].pauseVideo();
+  $('#lcd'+d).textContent = '0:00';
+}
+
+/* ─────────── 원터치 전환 ─────────── */
+let fadeSec = 4;
+$('#seg').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('#seg').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); fadeSec = +b.dataset.s;
+};
+
+function transition(){
+  if (busy) return;
+  const to = xfPos < 50 ? 'B' : 'A';        // 지금 죽어있는 쪽으로 넘어간다
+  if (!meta[to].id) return toast(`덱 ${to}에 다음 곡을 먼저 올려줘`);
+
+  // 이 호출은 유저 탭 안에서 일어나므로 iOS 자동재생 제한을 통과한다
+  started[to] = true;
+  P[to].playVideo();
+
+  busy = true;
+  const go = $('#go'); go.classList.add('busy'); go.textContent = '전환 중…';
+  const from = xfPos, target = to === 'B' ? 100 : 0, t0 = performance.now(), ms = fadeSec * 1000;
+
+  const step = () => {
+    const p = Math.min(1, (performance.now() - t0) / ms);
+    xfPos = from + (target - from) * p;
+    $('#xf').value = xfPos;
+    applyGain();
+    if (p < 1) return requestAnimationFrame(step);
+    busy = false;
+    go.classList.remove('busy'); go.textContent = '⇄ 넘기기';
+    const off = to === 'B' ? 'A' : 'B';
+    if (safeState(off) === 1) P[off].pauseVideo();   // 넘어간 쪽 정지
+    toast(`덱 ${to}로 전환 완료`);
+  };
+  requestAnimationFrame(step);
+}
+
+/* ─────────── 믹서 입력 ─────────── */
+$('#xf').oninput = e => { if (busy) return; xfPos = +e.target.value; applyGain(); };
+$('#tA').oninput = e => { trim.A = e.target.value / 100; applyGain(); };
+$('#tB').oninput = e => { trim.B = e.target.value / 100; applyGain(); };
+
+/* ─────────── 플래터 = 탭(재생/정지) + 드래그(스크래치/탐색) ─────────── */
+/* Pointer Events로 통일 — 터치·마우스 둘 다 먹는다(데스크탑에서 테스트 가능).
+   살짝 눌렀다 떼면 탭 = 재생/일시정지, 돌리면 스크래치. */
+const TAP_SLOP = .12;      // 이 각도(rad, 약 7°) 안쪽이면 아직 탭으로 본다
+const TAP_MS   = 400;
+
+document.querySelectorAll('.grab').forEach(el => {
+  const d = el.dataset.deck;
+  let base = 0, ang0 = 0, acc = 0, moved = 0, t0 = 0, wasPlaying = false, active = false;
+
+  const angle = ev => {
+    const r = el.getBoundingClientRect();
+    return Math.atan2(ev.clientY - (r.top + r.height/2), ev.clientX - (r.left + r.width/2));
+  };
+
+  el.addEventListener('pointerdown', ev => {
+    if (!meta[d].id) return toast(`덱 ${d}가 비어있어`);
+    ev.preventDefault();
+    try{ el.setPointerCapture(ev.pointerId); }catch(e){}
+    active = true; moved = 0; acc = 0; t0 = performance.now();
+    try{ base = P[d].getCurrentTime(); }catch(e){ base = 0; }
+    ang0 = angle(ev);
+    wasPlaying = safeState(d) === 1;
+  });
+
+  el.addEventListener('pointermove', ev => {
+    if (!active) return;
+    ev.preventDefault();
+    const a = angle(ev);
+    let dl = a - ang0; ang0 = a;
+    if (dl > Math.PI) dl -= 2*Math.PI;            // 경계 넘김 보정
+    if (dl < -Math.PI) dl += 2*Math.PI;
+    moved += Math.abs(dl);
+    if (moved < TAP_SLOP) return;                 // 아직 탭 판정 구간 — 시크 안 함
+    acc += dl / (2*Math.PI) * 6;                  // 한 바퀴 = 6초
+    const t = Math.max(0, Math.min(meta[d].dur || 1e5, base + acc));
+    P[d].seekTo(t, true);
+    $('#lcd'+d).textContent = fmt(t);
+  });
+
+  const end = ev => {
+    if (!active) return;
+    active = false;
+    try{ el.releasePointerCapture(ev.pointerId); }catch(e){}
+    // 거의 안 움직이고 짧게 뗐으면 탭 — 이 핸들러가 유저 제스처라 iOS 재생 제한도 통과
+    if (moved < TAP_SLOP && performance.now() - t0 < TAP_MS) return toggle(d);
+    if (wasPlaying && safeState(d) !== 1) P[d].playVideo();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+});
+
+/* ─────────── 크레이트 ─────────── */
+function saveCrate(){ try{ localStorage.setItem('idj.crate', JSON.stringify(crate)); }catch(e){} }
+function loadCrate(){
+  try{ crate = JSON.parse(localStorage.getItem('idj.crate') || '[]'); }catch(e){ crate = []; }
+  render();
+}
+function addTrack(){
+  const raw = $('#url').value;
+  const id = ytid(raw);
+  if (!id) return toast('유튜브 링크를 인식 못했어');
+  if (crate.some(t => t.id === id)) return toast('이미 크레이트에 있어');
+  crate.unshift({id, name:'YouTube · ' + id});
+  $('#url').value = '';
+  saveCrate(); render();
+  toast('크레이트에 추가');
+}
+function render(){
+  const ul = $('#list');
+  if (!crate.length){ ul.innerHTML = '<div class="empty">링크를 추가하면 여기 쌓여</div>'; return; }
+  ul.innerHTML = '';
+  crate.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="n"></div>
+      <button class="mini a">A</button><button class="mini b">B</button>
+      <button class="del">✕</button>`;
+    li.querySelector('.n').textContent = t.name;
+    li.querySelector('.mini.a').onclick = () => loadDeck('A', t.id, t.name);
+    li.querySelector('.mini.b').onclick = () => loadDeck('B', t.id, t.name);
+    li.querySelector('.del').onclick = () => { crate.splice(i,1); saveCrate(); render(); };
+    ul.appendChild(li);
+  });
+}
+
+/* ─────────── 시간 표시 루프 ─────────── */
+setInterval(() => {
+  for (const d of ['A','B']){
+    if (!P[d] || !meta[d].id) continue;
+    let t = 0, dur = meta[d].dur;
+    try{ t = P[d].getCurrentTime(); if (!dur) dur = meta[d].dur = P[d].getDuration(); }catch(e){ continue; }
+    const left = dur ? dur - t : 0;
+    const lcd = $('#lcd'+d);
+    lcd.textContent = fmt(t);
+    // 남은 시간 30초 이하면 LCD 경고색 — 다음 곡 준비 신호
+    lcd.style.color = (dur && left <= 30) ? 'var(--warn)' : '';
+    lcd.style.textShadow = (dur && left <= 30) ? '0 0 6px rgba(255,84,112,.6)' : '';
+    const arc = $('#arc'+d), frac = dur ? t/dur : 0;
+    arc.setAttribute('stroke-dasharray', `${(frac*295.3).toFixed(1)} 999`);
+  }
+}, 250);
+
+loadCrate();
+applyGain();
+</script>
+</body>
+</html>
