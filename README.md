@@ -2,7 +2,14 @@
 
 모바일에서 유튜브 음악을 간단히 디제잉하는 웹앱. 조수석에서 다음 곡을 자연스럽게 넘기려고 만들었다.
 
-**▶ https://psw95perrykim-kr.github.io/PSW-BI-15/**
+## 주소
+
+| | 주소 | 용도 |
+|---|---|---|
+| **본편** | **https://psw95perrykim-kr.github.io/PSW-BI-15/** | 턴테이블 DJ 콘솔. **평소엔 이걸 연다.** |
+| 검증 | https://psw95perrykim-kr.github.io/PSW-BI-15/spike.html | 기기별 재생 능력 점검용. 턴테이블 UI가 아니라 테스트 버튼과 로그만 있는 페이지. |
+
+> `spike.html`은 디자인이 밋밋해서 "예전 UI"로 오해하기 쉽다. 본편이 아니라 검사 도구다.
 
 ## 쓰는 법
 
