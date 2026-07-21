@@ -55,6 +55,9 @@ body{
 }
 #deckA .tag{color:var(--a);border-color:#1d4c63;box-shadow:0 0 8px -2px var(--a)}
 #deckB .tag{color:var(--b);border-color:#63401d;box-shadow:0 0 8px -2px var(--b)}
+/* 재생 중이지만 크로스페이더가 반대쪽이라 소리가 안 나는 상태 */
+.deck.silent .tag::after{content:" 무음";color:var(--warn)}
+.deck.silent .lcd{color:#5c6570;text-shadow:none}
 .deck-head .sp{flex:1}
 .lcd{
   font:700 11px/1 ui-monospace,Menlo,monospace;color:var(--lcd-fg);
@@ -347,6 +350,8 @@ function applyGain(){
       P[d].setVolume(v);
       if (!FADE_OK) v < 50 ? P[d].mute() : P[d].unMute();  // 폴백: 음소거 컷
     }catch(e){}
+    // 재생 중인데 페이더가 반대쪽에 붙어 있으면 소리가 안 난다 — "고장"으로 오해하기 쉬워 표시해준다
+    $('#deck'+d).classList.toggle('silent', g[d] < .02 && safeState(d) === 1);
   }
   const live = g.A > g.B ? 'A' : 'B';
   const pill = $('#pillLive');
