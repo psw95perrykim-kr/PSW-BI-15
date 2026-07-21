@@ -116,6 +116,13 @@ body{
 #deckA .btn.load{border-color:#1d4c63;color:var(--a)}
 #deckB .btn.load{border-color:#63401d;color:var(--b)}
 
+/* BPM / 싱크 */
+.btn.bpm,.btn.sync{font-size:11px;letter-spacing:.04em;padding:9px 4px}
+.btn.bpm{color:var(--dim)}
+.btn.bpm.set{color:var(--fg)}
+.btn.bpm .u{font-size:9px;opacity:.55;margin-left:2px}
+.btn.sync.on{background:linear-gradient(#c9862c,#7d4d13);border-color:#e0a24a;color:#fff6e6}
+
 /* ── 믹서 ── */
 .mixer{margin-top:8px;padding:11px 12px 13px}
 .trims{display:flex;gap:10px;align-items:center;margin-bottom:12px}
@@ -189,6 +196,7 @@ li .mini{
 }
 li .mini.a{color:var(--a);border-color:#1d4c63}
 li .mini.b{color:var(--b);border-color:#63401d}
+li .bpmTag{font:700 9px/1 ui-monospace,monospace;color:var(--dim);letter-spacing:.06em}
 li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
 .empty{color:#4e5762;font-size:12px;text-align:center;padding:14px 0}
 
@@ -206,6 +214,7 @@ li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
 <div class="topbar">
   <div class="brand"><b>INSTANT</b> DJ</div>
   <div class="sp"></div>
+  <div class="pill" id="pillWake" style="display:none">☀︎ 화면유지</div>
   <div class="pill" id="pillLive">READY</div>
 </div>
 
@@ -231,6 +240,10 @@ li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
       <button class="btn sm" onclick="cue('A')">CUE</button>
       <button class="btn sm play" id="playA" onclick="toggle('A')">▶</button>
     </div>
+    <div class="deck-btns">
+      <button class="btn sm bpm" id="bpmA" onclick="tapTempo('A')">TAP</button>
+      <button class="btn sm sync" id="syncA" onclick="sync('A')">SYNC</button>
+    </div>
   </div>
 
   <div class="deck panel" id="deckB">
@@ -253,6 +266,10 @@ li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
     <div class="deck-btns">
       <button class="btn sm" onclick="cue('B')">CUE</button>
       <button class="btn sm play" id="playB" onclick="toggle('B')">▶</button>
+    </div>
+    <div class="deck-btns">
+      <button class="btn sm bpm" id="bpmB" onclick="tapTempo('B')">TAP</button>
+      <button class="btn sm sync" id="syncB" onclick="sync('B')">SYNC</button>
     </div>
   </div>
 </div>
@@ -293,6 +310,8 @@ li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
 const P = {A:null, B:null};                 // YT 플레이어
 const meta = {A:{id:null,dur:0}, B:{id:null,dur:0}};
 const trim = {A:1, B:1};                    // 채널 트림 0~1
+const bpm  = {A:0, B:0};                    // 탭으로 잡은 원곡 BPM (0=미측정)
+const rate = {A:1, B:1};                    // 적용된 재생 배속
 let xfPos = 0;                              // 0=A 전용, 100=B 전용
 let started = {A:false, B:false};           // iOS 제스처 해금 여부
 let ytReady = false, busy = false;
@@ -363,7 +382,8 @@ function mk(el, d){
           try{ meta[d].dur = P[d].getDuration(); }catch(e){}
           const t = P[d].getVideoData && P[d].getVideoData().title;
           if (t){ $('#title'+d).textContent = t; $('#title'+d).classList.add('set'); }
-        }
+          wakeOn();
+        } else if (!anyPlaying()) wakeOff();
         applyGain();
       }
     }
@@ -373,7 +393,13 @@ function mk(el, d){
 function loadDeck(d, id, name){
   if (!ytReady || !P[d]) return toast('플레이어 준비 중…');
   meta[d].id = id; meta[d].dur = 0;
+  taps[d].length = 0;
+  const known = crate.find(x => x.id === id);
+  bpm[d] = (known && known.bpm) || 0;          // 전에 탭해둔 BPM이 있으면 되살린다
+  rate[d] = 1;
   P[d].cueVideoById(id);
+  try{ P[d].setPlaybackRate(1); }catch(e){}
+  renderBpm(d);
   $('#title'+d).textContent = name || '로딩 중…';
   $('#title'+d).classList.add('set');
   $('#lcd'+d).textContent = '0:00';
@@ -408,6 +434,89 @@ function cue(d){
   P[d].pauseVideo();
   $('#lcd'+d).textContent = '0:00';
 }
+
+/* ─────────── BPM: 탭 템포 + 싱크 ─────────── */
+/* 오디오가 cross-origin iframe 안에 있어 자동 분석이 불가능하다. 비트에 맞춰 탭해서 잡는다.
+   유튜브 setPlaybackRate는 문서와 달리 실측 0.05 단위로 내림된다(0.97→0.95). 그래서
+   딱 떨어지지 않고, 아래 renderBpm은 항상 "실제 적용된" 배속 기준으로 표시한다.
+   배속을 바꿔도 유튜브는 피치를 보존하므로 곡의 키는 안 틀어진다. */
+const RATE_MIN = .5, RATE_MAX = 2, RATE_STEP = .05;
+const taps = {A:[], B:[]};
+
+function tapTempo(d){
+  const now = performance.now(), t = taps[d];
+  if (t.length && now - t[t.length-1] > 2500) t.length = 0;   // 오래 쉬면 새로 측정
+  t.push(now);
+  if (t.length > 8) t.shift();                                // 최근 8탭만
+  if (t.length >= 2){
+    const b = 60000 * (t.length - 1) / (t[t.length-1] - t[0]);
+    if (b >= 60 && b <= 200){
+      bpm[d] = Math.round(b);
+      const c = crate.find(x => x.id === meta[d].id);         // 곡에 붙여서 저장
+      if (c){ c.bpm = bpm[d]; saveCrate(); }
+    }
+  }
+  renderBpm(d);
+}
+
+function setRate(d, r){
+  try{ P[d].setPlaybackRate(r); }catch(e){}
+  rate[d] = r;
+  renderBpm(d);
+  // 유튜브가 요청값을 그대로 안 받으므로 실제 적용값을 되읽어 표시를 바로잡는다
+  setTimeout(() => {
+    try{ const a = P[d].getPlaybackRate(); if (a) rate[d] = a; }catch(e){}
+    renderBpm(d);
+  }, 300);
+}
+
+function sync(d){
+  if (rate[d] !== 1) return setRate(d, 1);                    // 한 번 더 누르면 해제
+  const o = d === 'A' ? 'B' : 'A';
+  if (!bpm[d] || !bpm[o]) return toast('양쪽 덱 BPM을 먼저 탭해줘');
+
+  let r = (bpm[o] * rate[o]) / bpm[d];
+  while (r > 1.4) r /= 2;                                     // 하프/더블 템포 보정
+  while (r < 0.7) r *= 2;                                     // (70 BPM과 140 BPM은 서로 맞는 곡)
+  r = Math.min(RATE_MAX, Math.max(RATE_MIN, Math.round(r / RATE_STEP) * RATE_STEP));
+  setRate(d, r);
+
+  const got = Math.round(bpm[d] * r), want = Math.round(bpm[o] * rate[o]);
+  toast(got === want ? `덱 ${d} 싱크 ${got} BPM` : `덱 ${d} ${got} BPM (${want}에서 ${got>want?'+':''}${got-want})`);
+}
+
+function renderBpm(d){
+  const b = $('#bpm'+d), s = $('#sync'+d), off = Math.abs(rate[d] - 1) >= .001;
+  b.innerHTML = bpm[d] ? `${Math.round(bpm[d] * rate[d])}<span class="u">BPM</span>` : 'TAP';
+  b.classList.toggle('set', !!bpm[d]);
+  s.textContent = off ? rate[d].toFixed(2) + 'x' : 'SYNC';
+  s.classList.toggle('on', off);
+  $('#deck'+d+' .spin').style.animationDuration = (1.8 / rate[d]).toFixed(2) + 's';  // 판도 같이 빨라지게
+}
+
+/* ─────────── 화면 꺼짐 방지 ─────────── */
+/* 유튜브 임베드는 iOS에서 백그라운드 재생이 막혀 있다(앱 전환·화면 잠금 시 정지).
+   우회 방법이 없으므로, 재생 중에는 화면이 안 꺼지게 붙잡아 두는 것으로 대신한다. */
+let wl = null;
+const anyPlaying = () => safeState('A') === 1 || safeState('B') === 1;
+
+async function wakeOn(){
+  if (wl || !('wakeLock' in navigator)) return;
+  try{
+    wl = await navigator.wakeLock.request('screen');
+    wl.addEventListener('release', () => { wl = null; $('#pillWake').style.display = 'none'; });
+    $('#pillWake').style.display = '';
+  }catch(e){}                                                 // 저전력 모드 등에서 거부될 수 있다
+}
+function wakeOff(){
+  if (!wl) return;
+  try{ wl.release(); }catch(e){}
+  wl = null; $('#pillWake').style.display = 'none';
+}
+// iOS는 탭이 가려지면 락을 풀어버린다 — 돌아왔을 때 다시 잡는다
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && anyPlaying()) wakeOn();
+});
 
 /* ─────────── 원터치 전환 ─────────── */
 let fadeSec = 4;
@@ -524,10 +633,11 @@ function render(){
   ul.innerHTML = '';
   crate.forEach((t, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<div class="n"></div>
+    li.innerHTML = `<div class="n"></div><span class="bpmTag"></span>
       <button class="mini a">A</button><button class="mini b">B</button>
       <button class="del">✕</button>`;
     li.querySelector('.n').textContent = t.name;
+    li.querySelector('.bpmTag').textContent = t.bpm ? t.bpm : '';
     li.querySelector('.mini.a').onclick = () => loadDeck('A', t.id, t.name);
     li.querySelector('.mini.b').onclick = () => loadDeck('B', t.id, t.name);
     li.querySelector('.del').onclick = () => { crate.splice(i,1); saveCrate(); render(); };
@@ -541,7 +651,7 @@ setInterval(() => {
     if (!P[d] || !meta[d].id) continue;
     let t = 0, dur = meta[d].dur;
     try{ t = P[d].getCurrentTime(); if (!dur) dur = meta[d].dur = P[d].getDuration(); }catch(e){ continue; }
-    const left = dur ? dur - t : 0;
+    const left = dur ? (dur - t) / rate[d] : 0;   // 배속 걸린 만큼 실제 남은 시간은 줄어든다
     const lcd = $('#lcd'+d);
     lcd.textContent = fmt(t);
     // 남은 시간 30초 이하면 LCD 경고색 — 다음 곡 준비 신호
@@ -554,6 +664,7 @@ setInterval(() => {
 
 loadCrate();
 applyGain();
+renderBpm('A'); renderBpm('B');
 </script>
 </body>
 </html>
