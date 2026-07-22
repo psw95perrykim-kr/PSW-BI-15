@@ -36,6 +36,8 @@ body{
   background:#15181d;border:1px solid #262c34;color:var(--dim);
 }
 .pill.on{color:var(--live);border-color:#1e4b34;background:#0d1a14}
+.pill.mode{color:var(--fg);border-color:#3a434e;font-family:-apple-system,sans-serif;letter-spacing:0}
+.pill.mode:active{background:#232932}
 
 /* ── 장비 패널 공통 ── */
 .panel{
@@ -218,6 +220,7 @@ li .del{color:#55606c;background:none;border:0;font-size:15px;padding:6px 2px}
   <div class="brand"><b>INSTANT</b> DJ</div>
   <div class="sp"></div>
   <div class="pill" id="pillWake" style="display:none">☀︎ 화면유지</div>
+  <button class="pill mode" id="pillMode" onclick="toggleMode()">컷</button>
   <div class="pill" id="pillLive">READY</div>
 </div>
 
@@ -316,7 +319,6 @@ const trim = {A:1, B:1};                    // 채널 트림 0~1
 const bpm  = {A:0, B:0};                    // 탭으로 잡은 원곡 BPM (0=미측정)
 const rate = {A:1, B:1};                    // 적용된 재생 배속
 let xfPos = 0;                              // 0=A 전용, 100=B 전용
-let started = {A:false, B:false};           // iOS 제스처 해금 여부
 let ytReady = false, busy = false;
 let crate = [];
 
@@ -330,9 +332,16 @@ function toast(m){
 }
 
 /* ─────────── 오디오 게인 ─────────── */
-/* 등파워 크로스페이드. iOS에서 setVolume이 무시되면 여기서 하드컷으로 폴백한다.
-   (spike.html T2 결과에 따라 FADE_OK를 false로 바꾸면 즉시 컷 모드) */
-const FADE_OK = true;
+/* iOS·iPadOS는 미디어 볼륨이 하드웨어 전용이라 setVolume()을 통째로 무시한다.
+   (getVolume()은 설정한 값을 그대로 되돌려줘서 코드로는 탐지가 안 된다.)
+   대신 mute()는 먹는다. 그래서 볼륨과 별개로 항상 mute도 같이 걸어,
+   볼륨이 안 먹는 기기에서도 "들리는 덱"이 정확히 갈리게 한다.
+
+   컷 모드 = 페이더 중앙을 넘는 순간 들리는 쪽이 딱 바뀐다. 양쪽 다 계속 재생되므로
+   시작 지연이나 끊김이 없다. 페이드 모드 = 등파워 커브로 부드럽게 섞인다. */
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+           || (/Mac/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);  // iPadOS는 Mac으로 위장한다
+let cutMode = isIOS;
 
 function gains(){
   const t = xfPos / 100;
@@ -343,21 +352,28 @@ function gains(){
 }
 function applyGain(){
   const g = gains();
+  const live = g.A >= g.B ? 'A' : 'B';
   for (const d of ['A','B']){
     if (!P[d]) continue;
-    const v = Math.round(g[d] * 100);
+    const audible = cutMode ? d === live : g[d] >= .02;
     try{
-      P[d].setVolume(v);
-      if (!FADE_OK) v < 50 ? P[d].mute() : P[d].unMute();  // 폴백: 음소거 컷
+      P[d].setVolume(Math.round(g[d] * 100));
+      audible ? P[d].unMute() : P[d].mute();
     }catch(e){}
     // 재생 중인데 페이더가 반대쪽에 붙어 있으면 소리가 안 난다 — "고장"으로 오해하기 쉬워 표시해준다
-    $('#deck'+d).classList.toggle('silent', g[d] < .02 && safeState(d) === 1);
+    $('#deck'+d).classList.toggle('silent', !audible && safeState(d) === 1);
   }
-  const live = g.A > g.B ? 'A' : 'B';
   const pill = $('#pillLive');
   const playing = P[live] && safeState(live) === 1;
   pill.textContent = playing ? `ON AIR · ${live}` : 'READY';
   pill.classList.toggle('on', !!playing);
+}
+
+function toggleMode(){
+  cutMode = !cutMode;
+  $('#pillMode').textContent = cutMode ? '컷' : '페이드';
+  applyGain();
+  toast(cutMode ? '컷 — 페이더 중앙에서 딱 바뀜' : '페이드 — 부드럽게 섞임 (볼륨 조절되는 기기에서만)');
 }
 function safeState(d){ try{ return P[d].getPlayerState(); }catch(e){ return -1; } }
 
@@ -430,7 +446,6 @@ function loadDeck(d, id, name){
 /* ─────────── 트랜스포트 ─────────── */
 function toggle(d){
   if (!meta[d].id) return toast(`덱 ${d}가 비어있어`);
-  started[d] = true;                        // 유저 제스처 안 — iOS 해금
   safeState(d) === 1 ? P[d].pauseVideo() : P[d].playVideo();
 }
 function cue(d){
@@ -537,7 +552,6 @@ function transition(){
   if (!meta[to].id) return toast(`덱 ${to}에 다음 곡을 먼저 올려줘`);
 
   // 이 호출은 유저 탭 안에서 일어나므로 iOS 자동재생 제한을 통과한다
-  started[to] = true;
   P[to].playVideo();
 
   busy = true;
@@ -552,9 +566,9 @@ function transition(){
     if (p < 1) return requestAnimationFrame(step);
     busy = false;
     go.classList.remove('busy'); go.textContent = '⇄ 넘기기';
-    const off = to === 'B' ? 'A' : 'B';
-    if (safeState(off) === 1) P[off].pauseVideo();   // 넘어간 쪽 정지
-    toast(`덱 ${to}로 전환 완료`);
+    // 넘어간 덱은 일부러 그대로 돌려둔다. 여기서 pauseVideo()를 부르면 소리가 뚝 끊기고,
+    // 되돌리고 싶을 때 재생이 처음부터 다시 버퍼링된다. 멈추는 건 유저가 직접 하게 둔다.
+    toast(`덱 ${to}로 전환 완료 — 반대쪽은 계속 돌아가`);
   };
   requestAnimationFrame(step);
 }
@@ -668,6 +682,7 @@ setInterval(() => {
 }, 250);
 
 loadCrate();
+$('#pillMode').textContent = cutMode ? '컷' : '페이드';
 applyGain();
 renderBpm('A'); renderBpm('B');
 </script>
